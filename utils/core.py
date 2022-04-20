@@ -163,13 +163,14 @@ class Player(pg.sprite.Sprite):
         self.hole_draw_timer = None
         self.is_hole_being_drawn = False
 
-        play_area_rect = play_area.get_rect()
+        self.play_area_rect = play_area.get_rect()
         self.play_area_offset = play_area.get_offset()
-        player_rect_bounds = [[30, play_area_rect.width - 30],
-                              [30, play_area_rect.height - 30]]
+        player_rect_bounds = [[30, self.play_area_rect.width - 30],
+                              [30, self.play_area_rect.height - 30]]
         self.rect = self.image.get_rect(center=(np.random.randint(*player_rect_bounds[0]),
                                                 np.random.randint(*player_rect_bounds[1])))
         self.rect_center_float = self.rect.center  # To be used when the velocity is not an integer
+        self.out_of_bounds = False
 
     def change_direction(self):
         held_keys = pg.key.get_pressed()
@@ -189,16 +190,23 @@ class Player(pg.sprite.Sprite):
         movement_vector = pg.math.Vector2(list(np.round(movement_vector[:])))
         self.rect.move_ip(movement_vector)
 
-        if self._check_if_dead(trails_mask, movement_vector):
+        self._check_collisions(trails_mask, movement_vector)
+        if self._check_death():
             self.kill()
 
         if not self.is_hole_being_drawn:
             pg.draw.line(trails, self.player_color, initial_center, self.rect.center, self.width)
+    def _check_death(self):
+        return self.trail_collision or self.out_of_bounds
 
-    def _check_if_dead(self, trails_mask, movement_vector):  # TODO: Check out of bounds
+    def _check_collisions(self, trails_mask, movement_vector):
         rect_radius = self.rect.width/2
         radius_vector = rect_radius * movement_vector.normalize()
-        return trails_mask.get_at(self.rect.center + 0.9 * radius_vector) == 1
+        try:
+            self.trail_collision = trails_mask.get_at(self.rect.center + 0.9 * radius_vector) == 1
+        except IndexError:
+            self.trail_collision = True
+        self.out_of_bounds = not self.play_area_rect.contains(self.rect)
 
     def _update_hole_stats(self):
         if not self.is_hole_being_drawn:
