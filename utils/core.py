@@ -137,9 +137,10 @@ class Board:
 
 
 class Player(pg.sprite.Sprite):
-    DEFAULT_WIDTH = 7
-    ROTATION_ANGLE = 3
-    INITIAL_SPEED = 3
+    DEFAULT_WIDTH = 7  # Pixels
+    ROTATION_ANGLE = 3  # Degrees
+    INITIAL_SPEED = 3  # Pixels
+    TRAIL_PIXEL_DELAY = 5
     EXPECTED_TIME_BETWEEN_HOLES = 4  # Seconds
     HOLE_COOLOFF = 2  # Seconds
     HOLE_TIME_RANGE = (0.2, 0.3)  # Seconds
@@ -171,6 +172,7 @@ class Player(pg.sprite.Sprite):
                                                 np.random.randint(*player_rect_bounds[1])))
         self.rect_center_float = self.rect.center  # To be used when the velocity is not an integer
         self.out_of_bounds = False
+        self.last_drawn_center = pg.math.Vector2([np.inf, np.inf])
 
     def change_direction(self):
         held_keys = pg.key.get_pressed()
@@ -184,7 +186,6 @@ class Player(pg.sprite.Sprite):
     def update(self, trails, trails_mask):
         self._update_hole_stats()
 
-        initial_center = self.rect.center
         self.rect_center_float += self.velocity
         movement_vector = self.rect_center_float - self.rect.center
         movement_vector = pg.math.Vector2(list(np.round(movement_vector[:])))
@@ -194,8 +195,14 @@ class Player(pg.sprite.Sprite):
         if self._check_death():
             self.kill()
 
+        rect_center_vec = pg.math.Vector2(self.rect.center)
         if not self.is_hole_being_drawn:
-            pg.draw.line(trails, self.player_color, initial_center, self.rect.center, self.width)
+            if (rect_center_vec - self.last_drawn_center).length_squared() >= self.TRAIL_PIXEL_DELAY ** 2:
+                pg.draw.line(trails, self.player_color, self.last_drawn_center, self.rect.center, self.width)
+                self.last_drawn_center = rect_center_vec
+        else:
+            self.last_drawn_center = rect_center_vec
+
     def _check_death(self):
         return self.trail_collision or self.out_of_bounds
 
