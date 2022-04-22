@@ -172,7 +172,7 @@ class Player(pg.sprite.Sprite):
                                                 np.random.randint(*player_rect_bounds[1])))
         self.rect_center_float = self.rect.center  # To be used when the velocity is not an integer
         self.out_of_bounds = False
-        self.last_drawn_center = pg.math.Vector2([np.inf, np.inf])
+        self.source_trail_point = pg.math.Vector2([np.inf, np.inf])
 
     def change_direction(self):
         held_keys = pg.key.get_pressed()
@@ -195,13 +195,23 @@ class Player(pg.sprite.Sprite):
         if self._check_death():
             self.kill()
 
-        rect_center_vec = pg.math.Vector2(self.rect.center)
         if not self.is_hole_being_drawn:
-            if (rect_center_vec - self.last_drawn_center).length_squared() >= self.TRAIL_PIXEL_DELAY ** 2:
-                pg.draw.line(trails, self.player_color, self.last_drawn_center, self.rect.center, self.width)
-                self.last_drawn_center = rect_center_vec
+            dest_trail_point = self._calc_drawing_point(movement_vector)
+            self._calc_drawing_point(movement_vector)
+            self._draw_trail(trails, dest_trail_point)
         else:
-            self.last_drawn_center = rect_center_vec
+            self.source_trail_point = self._calc_drawing_point(movement_vector)
+
+    def _draw_trail(self, trails, dest_trail_point):
+        if (dest_trail_point - self.source_trail_point).length_squared() >= self.TRAIL_PIXEL_DELAY ** 2:
+            pg.draw.line(trails, self.player_color, self.source_trail_point, self.rect.center, self.width)
+            self.source_trail_point = dest_trail_point
+
+    def _calc_drawing_point(self, movement_vector):
+        radius_vec = self.rect.width//2 * movement_vector.normalize()
+        radius_vec.x = np.trunc(radius_vec.x) + np.sign(radius_vec.x)
+        radius_vec.y = np.trunc(radius_vec.y) + np.sign(radius_vec.y)
+        return pg.math.Vector2(self.rect.center) - radius_vec
 
     def _check_death(self):
         return self.trail_collision or self.out_of_bounds
