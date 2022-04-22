@@ -15,6 +15,7 @@ class Game:
         self._set_player_dicts(player_input_dicts)
         self.going = True
         self.is_paused = False
+        self.players = [Player(self.board.play_area, **player_dict) for player_dict in self.player_dicts]
 
     def _set_player_dicts(self, player_input_dicts):
         directions = ['left', 'right']
@@ -29,8 +30,9 @@ class Game:
     def _init_round(self):
         self.board.set_play_area(reset_trails=True)
 
-        players = [Player(self.board.play_area, **player_dict) for player_dict in self.player_dicts]
-        self.players_group = pg.sprite.Group(players)
+        for player in self.players:
+            player.reset()
+        self.players_group = pg.sprite.Group(self.players)
         self.trail_group = pg.sprite.Group()
 
         self.round_over = False
@@ -149,6 +151,14 @@ class Player(pg.sprite.Sprite):
         super().__init__()
 
         # Init vars
+        self.score = 0
+        self.rect_center_float = None
+        self.source_trail_point = None
+        self.out_of_bounds = None
+        self.is_hole_being_drawn = None
+        self.hole_draw_timer = None
+        self.hole_cooloff_timer = None
+        self.play_area = play_area
         self.key_bindings_dict = key_bindings_dict
         self.player_color = player_color
         self.active_powerups = []
@@ -159,20 +169,22 @@ class Player(pg.sprite.Sprite):
         self.image.set_colorkey((255, 255, 255), pg.RLEACCEL)
         self.mask = pg.mask.from_surface(self.image)
 
+        self.reset()
+
+    def reset(self):
         self.hole_cooloff_timer = self.HOLE_COOLOFF + np.random.exponential(FPS * (self.EXPECTED_TIME_BETWEEN_HOLES
                                                                                    - self.HOLE_COOLOFF)) / FPS
         self.hole_draw_timer = None
         self.is_hole_being_drawn = False
 
-        self.play_area_rect = play_area.get_rect()
-        self.play_area_offset = play_area.get_offset()
-        player_rect_bounds = [[30, self.play_area_rect.width - 30],
-                              [30, self.play_area_rect.height - 30]]
-        self.rect = self.image.get_rect(center=(np.random.randint(*player_rect_bounds[0]),
-                                                np.random.randint(*player_rect_bounds[1])))
-        self.rect_center_float = self.rect.center  # To be used when the velocity is not an integer
         self.out_of_bounds = False
         self.source_trail_point = pg.math.Vector2([np.inf, np.inf])
+
+        self.rect_center_float = self.rect.center  # To be used when the velocity is not an integer
+        player_rect_bounds = [[30, self.play_area.get_rect().width - 30],
+                              [30, self.play_area.get_rect().height - 30]]
+        self.rect = self.image.get_rect(center=(np.random.randint(*player_rect_bounds[0]),
+                                                np.random.randint(*player_rect_bounds[1])))
 
     def change_direction(self):
         held_keys = pg.key.get_pressed()
@@ -223,7 +235,7 @@ class Player(pg.sprite.Sprite):
             self.trail_collision = trails_mask.get_at(self.rect.center + 0.9 * radius_vector) == 1
         except IndexError:
             self.trail_collision = True
-        self.out_of_bounds = not self.play_area_rect.contains(self.rect)
+        self.out_of_bounds = not self.play_area.get_rect().contains(self.rect)
 
     def _update_hole_stats(self):
         if not self.is_hole_being_drawn:
