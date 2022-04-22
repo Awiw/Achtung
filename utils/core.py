@@ -178,7 +178,7 @@ class Player(pg.sprite.Sprite):
         self.is_hole_being_drawn = False
 
         self.out_of_bounds = False
-        self.source_trail_point = pg.math.Vector2([np.inf, np.inf])
+        self.source_trail_point = None
 
         self.rect_center_float = self.rect.center  # To be used when the velocity is not an integer
         player_rect_bounds = [[30, self.play_area.get_rect().width - 30],
@@ -203,11 +203,11 @@ class Player(pg.sprite.Sprite):
         movement_vector = pg.math.Vector2(list(np.round(movement_vector[:])))
         self.rect.move_ip(movement_vector)
 
-        self._check_collisions(trails_mask, movement_vector)
+        self._check_collisions(trails_mask)
         if self._check_death():
             self.kill()
 
-        if not self.is_hole_being_drawn:
+        if not self.is_hole_being_drawn and self.source_trail_point is not None:
             dest_trail_point = self._calc_drawing_point(movement_vector)
             self._calc_drawing_point(movement_vector)
             self._draw_trail(trails, dest_trail_point)
@@ -216,23 +216,21 @@ class Player(pg.sprite.Sprite):
 
     def _draw_trail(self, trails, dest_trail_point):
         if (dest_trail_point - self.source_trail_point).length_squared() >= self.TRAIL_PIXEL_DELAY ** 2:
-            pg.draw.line(trails, self.player_color, self.source_trail_point, self.rect.center, self.width)
+            pg.draw.line(trails, self.player_color, self.source_trail_point, dest_trail_point, self.width)
             self.source_trail_point = dest_trail_point
 
     def _calc_drawing_point(self, movement_vector):
         radius_vec = self.rect.width//2 * movement_vector.normalize()
-        radius_vec.x = np.trunc(radius_vec.x) + np.sign(radius_vec.x)
-        radius_vec.y = np.trunc(radius_vec.y) + np.sign(radius_vec.y)
+        radius_vec.x = np.trunc(radius_vec.x) + 2*np.sign(radius_vec.x)
+        radius_vec.y = np.trunc(radius_vec.y) + 2*np.sign(radius_vec.y)
         return pg.math.Vector2(self.rect.center) - radius_vec
 
     def _check_death(self):
         return self.trail_collision or self.out_of_bounds
 
-    def _check_collisions(self, trails_mask, movement_vector):
-        rect_radius = self.rect.width/2
-        radius_vector = rect_radius * movement_vector.normalize()
+    def _check_collisions(self, trails_mask):
         try:
-            self.trail_collision = trails_mask.get_at(self.rect.center + 0.9 * radius_vector) == 1
+            self.trail_collision = trails_mask.overlap_area(self.mask, self.rect.topleft) > 0
         except IndexError:
             self.trail_collision = True
         self.out_of_bounds = not self.play_area.get_rect().contains(self.rect)
