@@ -130,11 +130,12 @@ class Board:
 
         title_text = f'First to {10*(len(players)-1)} wins!'
         dst = (10, 100)
-        dst = misc.text_wrap(self.score_board, title_text, self.score_title_font, dst, 'White', 'Black')
+
+        dst = misc.text_wrap(self.score_board, title_text, self.score_title_font, dst, 'White', 'Black', boundary=[10, 0])
 
         for player in sorted(players, key=lambda p: p.score):
             score_text = f'{player.name}: {player.score}'
-            dst = misc.text_wrap(self.score_board, score_text, self.score_font, dst, player.color, 'Black')
+            dst = misc.text_wrap(self.score_board, score_text, self.score_font, dst, player.color, 'Black', boundary=[10, 0])
 
     def set_play_area(self, reset_trails=False, draw_borders=True):
         self.play_area.fill((0, 0, 0))
