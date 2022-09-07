@@ -40,24 +40,26 @@ class Game:
         for event in pg.event.get():
             self._pause_state_machine(event)
 
-            # Check for KEYDOWN event
-            if event.type == pg.KEYDOWN:
-                # If the Esc key is pressed, then exit the main loop
-                if event.key == pg.K_ESCAPE:
-                    self.going = False
-
-            # Check for QUIT event. If QUIT, then set running to false.
-            elif event.type == pg.QUIT:
+            # Check for Escape key or QUIT event
+            if (event.type == pg.KEYDOWN and event.key == pg.K_ESCAPE) or event.type == pg.QUIT:
                 self.going = False
 
     def _game_step(self, freeze_direction=False):
-        # Move players
-        self.players_group.update(self.board.trails, self.board.trails_mask)
 
         # Change players movement direction
         if not freeze_direction:
             for player in self.players_group:
                 player.change_direction()
+
+        # Move players
+        self.players_group.update(self.board.trails, self.board.trails_mask)
+
+        # Kill dead players and update scores
+        for player in self.players:
+            if player in self.players_group and player.dead:
+                player.kill()
+                for living_player in self.players_group:
+                    living_player.score += 1
 
         # Update screen
         self.board.set_play_area()
@@ -178,6 +180,8 @@ class Player(pg.sprite.Sprite):
         self.reset()
 
     def reset(self):
+
+        self.dead = True
 
         self.active_powerups = []
 
