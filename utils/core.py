@@ -1,5 +1,7 @@
-import pygame as pg
 import numpy as np
+import pygame as pg
+
+from utils import misc
 
 # Define game constants
 SCREEN_WIDTH = 1920
@@ -9,28 +11,19 @@ FPS = 30
 
 class Game:
 
-    def __init__(self, player_input_dicts):
+    def __init__(self, player_dicts):
         self.board = Board()
         self.clock = pg.time.Clock()
-        self._set_player_dicts(player_input_dicts)
         self.going = True
         self.is_paused = False
-
-    def _set_player_dicts(self, player_input_dicts):
-        directions = ['left', 'right']
-        self.player_dicts = []
-
-        for input_dict in player_input_dicts:
-            keys = [pg.key.key_code(key) for key in input_dict['keys']]
-            keyboard_binding = dict(zip(keys, directions))
-            player_dict = {'key_bindings_dict': keyboard_binding, 'player_color': input_dict['color']}
-            self.player_dicts.append(player_dict)
+        self.players = [Player(self.board.play_area, **player_dict) for player_dict in player_dicts]
 
     def _init_round(self):
         self.board.set_play_area(reset_trails=True)
 
-        players = [Player(self.board.play_area, **player_dict) for player_dict in self.player_dicts]
-        self.players_group = pg.sprite.Group(players)
+        for player in self.players:
+            player.reset()
+        self.players_group = pg.sprite.Group(self.players)
         self.trail_group = pg.sprite.Group()
 
         self.round_over = False
@@ -47,27 +40,30 @@ class Game:
         for event in pg.event.get():
             self._pause_state_machine(event)
 
-            # Check for KEYDOWN event
-            if event.type == pg.KEYDOWN:
-                # If the Esc key is pressed, then exit the main loop
-                if event.key == pg.K_ESCAPE:
-                    self.going = False
-
-            # Check for QUIT event. If QUIT, then set running to false.
-            elif event.type == pg.QUIT:
+            # Check for Escape key or QUIT event
+            if (event.type == pg.KEYDOWN and event.key == pg.K_ESCAPE) or event.type == pg.QUIT:
                 self.going = False
 
     def _game_step(self, freeze_direction=False):
-        # Move players
-        self.players_group.update(self.board.trails, self.board.trails_mask)
 
         # Change players movement direction
         if not freeze_direction:
             for player in self.players_group:
                 player.change_direction()
 
+        # Move players
+        self.players_group.update(self.board.trails, self.board.trails_mask)
+
+        # Kill dead players and update scores
+        for player in self.players:
+            if player in self.players_group and player.dead:
+                player.kill()
+                for living_player in self.players_group:
+                    living_player.score += 1
+
         # Update screen
         self.board.set_play_area()
+        self.board.set_score_board(self.players)
         self.players_group.draw(self.board.play_area)
         self.board.blit_background()
 
@@ -106,7 +102,9 @@ class Game:
 
 
 class Board:
-    PLAY_AREA_RECT = (20, 20, 1440, 1040)
+    PLAY_AREA_RECT = pg.rect.Rect(20, 20, 1540, 1040)
+    SCORES_AREA_RECT = pg.rect.Rect(PLAY_AREA_RECT.left + PLAY_AREA_RECT.width + 40,
+                                    PLAY_AREA_RECT.top, 300, PLAY_AREA_RECT.height)
 
     def __init__(self):
         pg.init()
@@ -116,6 +114,30 @@ class Board:
         self.play_area = self.background.subsurface(self.PLAY_AREA_RECT)
         self.trails = self.play_area.copy()
         self.trails_mask = None
+
+        self._init_score_board()
+
+    def _init_score_board(self):
+        self.score_board = self.background.subsurface(self.SCORES_AREA_RECT)
+
+        self.score_title_font = pg.freetype.SysFont('Arial', 36, bold=True)
+        self.score_font = pg.freetype.SysFont('Arial', 24, bold=True)
+
+    def set_score_board(self, players):
+        self.score_board.fill('Black')
+
+        score_board_rect = self.score_board.get_rect()
+        pg.draw.lines(self.score_board, 'white', True, [score_board_rect.topleft, score_board_rect.topright,
+                                                        score_board_rect.bottomright, score_board_rect.bottomleft], 5)
+
+        title_text = f'First to {10*(len(players)-1)} wins!'
+        dst = (10, 100)
+
+        dst = misc.text_wrap(self.score_board, title_text, self.score_title_font, dst, 'White', 'Black', boundary=[10, 0])
+
+        for player in sorted(players, key=lambda p: p.score):
+            score_text = f'{player.name}: {player.score}'
+            dst = misc.text_wrap(self.score_board, score_text, self.score_font, dst, player.color, 'Black', boundary=[10, 0])
 
     def set_play_area(self, reset_trails=False, draw_borders=True):
         self.play_area.fill((0, 0, 0))
@@ -145,34 +167,46 @@ class Player(pg.sprite.Sprite):
     HOLE_COOLOFF = 2  # Seconds
     HOLE_TIME_RANGE = (0.2, 0.3)  # Seconds
 
-    def __init__(self, play_area, key_bindings_dict, player_color):
+    def __init__(self, play_area, key_bindings_dict, color, name):
         super().__init__()
 
         # Init vars
+        self.score = 0
+        self.play_area = play_area
         self.key_bindings_dict = key_bindings_dict
-        self.player_color = player_color
+        self.color = color
+        self.name = name
+
+        self.reset()
+
+    def reset(self):
+
+        self.dead = True
+
         self.active_powerups = []
-        self.velocity = self.INITIAL_SPEED * pg.math.Vector2([1, 0])
-        self.width = self.DEFAULT_WIDTH
-        self.image = pg.transform.scale(pg.image.load("../sprites/player.png").convert_alpha(),
-                                        (self.width, self.width))
-        self.image.set_colorkey((255, 255, 255), pg.RLEACCEL)
-        self.mask = pg.mask.from_surface(self.image)
 
         self.hole_cooloff_timer = self.HOLE_COOLOFF + np.random.exponential(FPS * (self.EXPECTED_TIME_BETWEEN_HOLES
                                                                                    - self.HOLE_COOLOFF)) / FPS
         self.hole_draw_timer = None
         self.is_hole_being_drawn = False
 
-        self.play_area_rect = play_area.get_rect()
-        self.play_area_offset = play_area.get_offset()
-        player_rect_bounds = [[30, self.play_area_rect.width - 30],
-                              [30, self.play_area_rect.height - 30]]
+        self.velocity = self.INITIAL_SPEED * pg.math.Vector2([1, 0]).rotate(np.random.rand(1)*360)
+        self.width = self.DEFAULT_WIDTH
+
+        self.out_of_bounds = False
+        self.source_trail_point = None
+
+        self.image = pg.transform.scale(pg.image.load("../sprites/player.png").convert_alpha(),
+                                        (self.width, self.width))
+        self.image.set_colorkey((255, 255, 255), pg.RLEACCEL)
+        player_rect_bounds = [[30, self.play_area.get_rect().width - 30],
+                              [30, self.play_area.get_rect().height - 30]]
         self.rect = self.image.get_rect(center=(np.random.randint(*player_rect_bounds[0]),
                                                 np.random.randint(*player_rect_bounds[1])))
         self.rect_center_float = self.rect.center  # To be used when the velocity is not an integer
-        self.out_of_bounds = False
-        self.source_trail_point = None
+        self.mask = pg.mask.from_surface(self.image)
+        for point in self.mask.outline():
+            self.mask.set_at(point, 0)
 
     def change_direction(self):
         held_keys = pg.key.get_pressed()
@@ -186,6 +220,8 @@ class Player(pg.sprite.Sprite):
     def update(self, trails, trails_mask):
         self._update_hole_stats()
 
+        dest_trail_point = pg.math.Vector2(self.rect.center)
+
         self.rect_center_float += self.velocity
         movement_vector = self.rect_center_float - self.rect.center
         movement_vector = pg.math.Vector2(list(np.round(movement_vector[:])))
@@ -196,32 +232,25 @@ class Player(pg.sprite.Sprite):
             self.kill()
 
         if not self.is_hole_being_drawn and self.source_trail_point is not None:
-            dest_trail_point = self._calc_drawing_point(movement_vector)
-            self._calc_drawing_point(movement_vector)
             self._draw_trail(trails, dest_trail_point)
         else:
-            self.source_trail_point = self._calc_drawing_point(movement_vector)
+            self.source_trail_point = dest_trail_point
 
     def _draw_trail(self, trails, dest_trail_point):
         if (dest_trail_point - self.source_trail_point).length_squared() >= self.TRAIL_PIXEL_DELAY ** 2:
-            pg.draw.line(trails, self.player_color, self.source_trail_point, dest_trail_point, self.width)
+            pg.draw.line(trails, self.color, self.source_trail_point, dest_trail_point, self.width)
             self.source_trail_point = dest_trail_point
 
-    def _calc_drawing_point(self, movement_vector):
-        radius_vec = self.rect.width//2 * movement_vector.normalize()
-        radius_vec.x = np.trunc(radius_vec.x) + 2*np.sign(radius_vec.x)
-        radius_vec.y = np.trunc(radius_vec.y) + 2*np.sign(radius_vec.y)
-        return pg.math.Vector2(self.rect.center) - radius_vec
-
     def _check_death(self):
-        return self.trail_collision or self.out_of_bounds
+        self.dead = self.trail_collision or self.out_of_bounds
 
     def _check_collisions(self, trails_mask):
         try:
-            self.trail_collision = trails_mask.overlap_area(self.mask, self.rect.topleft) > 0
+            self.trail_collision = trails_mask.overlap_area(self.mask, self.rect.topleft) > 0 |\
+                                   trails_mask.get_at(self.rect.center)
         except IndexError:
             self.trail_collision = True
-        self.out_of_bounds = not self.play_area_rect.contains(self.rect)
+        self.out_of_bounds = not self.play_area.get_rect().contains(self.rect)
 
     def _update_hole_stats(self):
         if not self.is_hole_being_drawn:
@@ -244,8 +273,15 @@ class Powerup:
 
 
 if __name__ == "__main__":
-    player1_dict = {'keys': ['q', 'w'], 'color': 'red'}
-    player2_dict = {'keys': ['o', 'p'], 'color': 'blue'}
+
+    def set_key_bindings(keys):
+        directions = ['left', 'right']
+        keys = [pg.key.key_code(key) for key in keys]
+        return dict(zip(keys, directions))
+
+    player1_dict = {'key_bindings_dict': set_key_bindings(['q', 'w']), 'color': 'red', 'name': 'fred'}
+    player2_dict = {'key_bindings_dict': set_key_bindings(['o', 'p']), 'color': 'blue', 'name': 'bluebell'}
     player_dicts = [player1_dict, player2_dict]
+
     game = Game(player_dicts)
     game.main()
