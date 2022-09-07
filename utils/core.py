@@ -220,7 +220,7 @@ class Player(pg.sprite.Sprite):
     def update(self, trails, trails_mask):
         self._update_hole_stats()
 
-        dest_trail_point = self.rect.center
+        dest_trail_point = pg.math.Vector2(self.rect.center)
 
         self.rect_center_float += self.velocity
         movement_vector = self.rect_center_float - self.rect.center
@@ -233,16 +233,13 @@ class Player(pg.sprite.Sprite):
 
         if not self.is_hole_being_drawn and self.source_trail_point is not None:
             self._draw_trail(trails, dest_trail_point)
-        self.source_trail_point = dest_trail_point
+        else:
+            self.source_trail_point = dest_trail_point
 
     def _draw_trail(self, trails, dest_trail_point):
-        pg.draw.line(trails, self.color, self.source_trail_point, dest_trail_point, self.width)
-
-    def _calc_drawing_point(self, movement_vector):
-        radius_vec = self.rect.width//2 * movement_vector.normalize()
-        radius_vec.x = np.trunc(radius_vec.x) + 2*np.sign(radius_vec.x)
-        radius_vec.y = np.trunc(radius_vec.y) + 2*np.sign(radius_vec.y)
-        return pg.math.Vector2(self.rect.center) - movement_vector
+        if (dest_trail_point - self.source_trail_point).length_squared() >= self.TRAIL_PIXEL_DELAY ** 2:
+            pg.draw.line(trails, self.color, self.source_trail_point, dest_trail_point, self.width)
+            self.source_trail_point = dest_trail_point
 
     def _check_death(self):
         self.dead = self.trail_collision or self.out_of_bounds
