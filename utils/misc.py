@@ -1,4 +1,14 @@
 import numpy as np
+import itertools
+
+
+def mat_from_mask(mask):
+    X, Y = mask.get_size()
+    mask_mat = np.zeros([X, Y])
+    for x,y in itertools.product(range(X), range(Y)):
+        mask_mat[x, y] = np.mean(mask.get_at([x, y]))
+
+    return mask_mat
 
 
 def text_wrap(surf, text, font, pos=(0, 0), text_color=(0, 0, 0), bgcolor=None, align_center=True, boundary=(0, 0)):
