@@ -303,11 +303,6 @@ class Player(pg.sprite.Sprite):
                                                                                      - self.HOLE_COOLOFF)) / FPS
 
 
-class Powerup:
-    def __init__(self, powerup_type):
-        self.powerup_type = powerup_type
-
-
 if __name__ == "__main__":
 
     def set_key_bindings(keys):
